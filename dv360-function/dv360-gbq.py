@@ -3,6 +3,7 @@ from google.cloud import storage
 import pandas_gbq
 import os
 import io
+import numpy as np
 
 def get_data(event, context):
     bucket_name = event['bucket']
@@ -73,8 +74,9 @@ def clean_data(df):
 
             df.loc[:, :'media_type'] = df.loc[:, :'media_type'].astype(str)
             df.loc[:, 'business_id':'year'] = df.loc[:, 'business_id':'year'].apply(lambda x: x.str.rstrip('.0'))
+            df.loc[:, :'media_type'] = df.loc[:, :'media_type'].replace('nan', np.nan).replace('Null', np.nan).replace('NaN',np.nan)
 
-            df.loc[:, 'impressions':'active_view_viewable_impressions'] = df.loc[:, 'impressions':'active_view_viewable_impressions'].astype('float64')
+            df.loc[:, 'impressions':] = df.loc[:, 'impressions':].astype('float64')
 
     return df
 
