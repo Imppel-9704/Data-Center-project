@@ -59,7 +59,7 @@ def clean_data(df):
             df.rename(columns=dict(zip(ori_col, new_col)), inplace=True)
 
             ## insert new column
-            df.insert(0, 'media_platform', 'DV360')
+            df['media_platform'] = 'DV360'
 
             ## if it extract words in condition. It will replace with agency_name from replace_word in agency column
             df['agency'] = df['account_name'].str.extract(r"(?<=THB\\)(DX|CA|FL|VZ|IP|PO|DT|DM)").replace(replace_word, regex=True)
