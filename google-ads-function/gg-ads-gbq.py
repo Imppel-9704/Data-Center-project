@@ -110,8 +110,11 @@ def clean_data(df, file_name):
         return df
 
 def export_to_gbq(df):
-    pandas_gbq.to_gbq(df, 'dataset.table', project_id='', if_exists='append')
-
+  if 'ad_type' in df.columns:
+    pandas_gbq.to_gbq(df, 'table_type', project_id='diuhub-amplifith-acquisition', if_exists='append')
+  if 'age' in df.columns:
+    pandas_gbq.to_gbq(df, 'table_age', project_id='diuhub-amplifith-acquisition', if_exists='append')
+ 
 def etl_data(event, context):
     data, file_name = get_data(event, context)
     cleaned_data = clean_data(data, file_name=event['name'])
