@@ -47,8 +47,8 @@ def clean_data(df):
     df = df.merge(df_adver, on='account_name', how='left')
 
     ## insert new columns
-    df.insert(0, 'media_platform', 'TikTok')
-    df.insert(1, 'agency_id', df['Agency'].map(dict((d['agency_name'], d['id']) for d in agencies)))
+    df['media_platform'] = 'TikTok'
+    df['agency_id'] = df['Agency'].map(dict((d['agency_name'], d['id']) for d in agencies))
 
     ori_cols = list(df.columns)
     new_cols = [col.strip().replace(' ','_').replace('\t','').replace('(','').replace(')','').replace('Video','vdo').replace('%','pct').lower() for col in ori_cols]
