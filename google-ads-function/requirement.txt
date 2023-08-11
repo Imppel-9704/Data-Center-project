@@ -1,0 +1,5 @@
+google-cloud-storage
+pandas
+pandas-gbq
+numpy
+chardet

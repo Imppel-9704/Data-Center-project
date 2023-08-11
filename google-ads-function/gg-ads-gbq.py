@@ -98,10 +98,11 @@ def clean_data(df, file_name):
         df.loc[:, :'currency_code'] = df.loc[:, :'currency_code'].replace('nan', np.nan).replace('Null', np.nan).replace('NaN',np.nan)
 
         ## convert to str for using strip function
-        df['cost'] = df['cost'].astype(str)
+        df.loc[:, 'impr':'view_rate'] = df.loc[:, 'impr':'view_rate'].astype('str')
 
         ## strip, replace unnecessary words
         df.loc[:, 'impr':] = df.loc[:, 'impr':].applymap(lambda x: x.strip('"').replace(',', '').replace('%', ''))
+        df.loc[:, 'impr':'view_rate'] = df.loc[:, 'impr':'view_rate'].replace('nan', np.nan)
 
         ## convert to float
         float_cols = ['impr', 'clicks', 'cost', 'conversions', 'views', 'view_rate']
