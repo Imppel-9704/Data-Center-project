@@ -8,12 +8,12 @@ import datetime as dt
 from datetime import datetime, timedelta
 
 
-# get facebook data and read it as excel file
+## get facebook data and read it as excel file
 def get_data(event, context):
     bucket_name = event['bucket']
     file_name = event['name']
     # Check if the file has a .xlsx extension
-    if file_name.endswith('.xlsx'):
+    if file_name.endswith('.xlsx') and "reach" not in file_name:
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(file_name)
@@ -21,8 +21,6 @@ def get_data(event, context):
         blob_content = blob.download_as_bytes()
         df = pd.read_excel(io.BytesIO(blob_content))
         return df, file_name
-  
-    # function will read .csv file, to prevent error return it as None
     else:
         return None, None
 
@@ -41,7 +39,7 @@ def clean_data(df, file_name):
     fb_adver = pd.read_csv(url)
 
     for agency_name, agency_data in agencies.items():
-        if agency_name in file_name:
+        if agency_name in file_name and df is not None:
             business_id = agency_data['business_id']
             agency_id = agency_data['agency_id']
             agency = agency_data['agency']
@@ -61,10 +59,9 @@ def clean_data(df, file_name):
             # Rename columns if needed
             if 'Amount spent' in df.columns:
                 df.rename(columns={'Amount spent': 'Amount spent THB'}, inplace=True)
-            elif 'landing page view' in df.columns:
+            if 'landing page view' in df.columns:
                 df.rename(columns={'landing page view': 'Landing page views'}, inplace=True)
 
-    
             df.rename(columns={col: col.strip().replace(' ', '_').replace('/t', '').replace('(', '').replace(')', '').lower()
                     for col in df.columns}, inplace=True)
 
@@ -77,6 +74,13 @@ def clean_data(df, file_name):
                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement'
                 ])
 
+                dims = ['business_id', 'media_platform', 'agency_id', 'agency', 'account_id', 'account_name', 'campaign_id', 'campaign_name', 'year', 'month', 'gender', 'age',
+                        'ad_set_id', 'ad_set_name', 'ad_id', 'ad_name', 'advertiser', 'industry', 'currency', 'objective']
+                metrics = ['impressions', 'amount_spent_thb', 'link_clicks', 'page_likes', '3-second_video_plays', 'landing_page_views', 'app_installs', 'meta_leads', 'mobile_app_adds_to_cart',
+                        'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value',
+                        'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement']
+                df = df.groupby(dims).sum()[metrics].reset_index()
+
             elif 'device_platform' in df.columns:
                 df = df.reindex(columns=[
                 'business_id', 'media_platform', 'agency_id', 'agency', 'account_id', 'account_name', 'campaign_id', 'campaign_name', 'year', 'month', 'platform', 'placement', 'device_platform', 
@@ -85,6 +89,13 @@ def clean_data(df, file_name):
                 'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement'
                 ])
+
+                dims = ['business_id', 'media_platform', 'agency_id', 'agency', 'account_id', 'account_name', 'campaign_id', 'campaign_name', 'year', 'month', 'platform', 'placement', 'device_platform', 
+                        'ad_set_id', 'ad_set_name', 'ad_id', 'ad_name', 'advertiser', 'industry', 'currency', 'objective']
+                metrics = ['impressions', 'amount_spent_thb', 'link_clicks', 'page_likes', '3-second_video_plays', 'landing_page_views', 'app_installs', 'meta_leads', 'mobile_app_adds_to_cart', 
+                        'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
+                        'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement']
+                df = df.groupby(dims).sum()[metrics].reset_index()
 
             df.loc[:, :'objective'] = df.loc[:, :'objective'].astype(str)
             df.loc[:, :'objective'] = df.loc[:, :'objective'].replace('nan', '').replace('Null', '').replace('NaN','')
@@ -101,7 +112,7 @@ def get_ao(event, context):
     df_list = [
         pd.read_csv(io.BytesIO(blob.download_as_bytes()))
         for blob in blobs
-        if blob.name.endswith('.csv') and blob.updated.replace(tzinfo=None) + dt.timedelta(hours=7) >= datetime.now() - timedelta(days=7)
+        if blob.name.endswith('.csv') and blob.updated.replace(tzinfo=None) + dt.timedelta(hours=7) >= datetime.now() - timedelta(minutes=3)
     ]
     return df_list
 
@@ -135,7 +146,7 @@ def clean_ao(df_list):
             ## Add 0 in the front of month number
             dpp_df['month'] = dpp_df['month'].str.zfill(2)
             dpp_df = dpp_df.groupby(['account_id','campaign_id','ad_id','year','platform', 'placement', 'device_platform']).sum().reset_index()
-  
+    
     return ag_df, dpp_df
     
 
@@ -155,7 +166,7 @@ def join_data(df, ag_df, dpp_df):
                                                 'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
                                                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement', 
                                                 'impressions_addon', 'event_responses', 'outbound_clicks', 'leads_add-on', 'thruplay_actions'])
-            
+      
         elif 'device_platform' in df.columns:
             final_df = df.merge(dpp_df, how='left',
                                 on=['account_id', 'account_name', 'campaign_id', 'campaign_name', 'ad_set_id', 'ad_set_name', 
@@ -170,7 +181,7 @@ def join_data(df, ag_df, dpp_df):
                                                 'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
                                                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement', 
                                                 'impressions_addon', 'event_responses', 'outbound_clicks', 'leads_add-on', 'thruplay_actions'])
-        
+    
         ## add blank value to columns that originally have in bigquery table (old data)
         final_df['impressions_addon'] = final_df['impressions'].astype('float64')
         
@@ -185,9 +196,11 @@ def join_data(df, ag_df, dpp_df):
 def export_data(final_df):
     if final_df is not None:
         if 'age' in final_df.columns:
-            pandas_gbq.to_gbq(final_df, 'project_name.dataset.table_age-gender', project_id='project_id', if_exists='append')
+            pandas_gbq.to_gbq(final_df, 'project.dataset.table_age-gender', project_id='project_id', if_exists='append')
+            print("export age-gender complete")
         elif 'device_platform' in final_df.columns:
-            pandas_gbq.to_gbq(final_df, 'project_name.dataset.table_dpp', project_id='project_id', if_exists='append')
+            pandas_gbq.to_gbq(final_df, 'project.dataset.table_dpp', project_id='project_id', if_exists='append')
+            print("export dpp complete")
 
 
 def etl_data(event, context):
