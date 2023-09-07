@@ -1,45 +1,69 @@
 import pandas as pd
-import pandas_gbq
-import os
-import io
 import numpy as np
 from google.cloud import storage
-import datetime as dt
-from datetime import datetime, timedelta
+import os
+import io
+import zipfile
+import pandas_gbq
 
-## get facebook data and read it as excel file
-def get_data(event, context):
+# function extract zip file
+def extract_zip(blob):
+    with zipfile.ZipFile(io.BytesIO(blob.download_as_string())) as zip_ref:
+        tmp_path = "/tmp/"
+        zip_ref.extractall(tmp_path)
+        extracted_files = zip_ref.namelist()
+    return extracted_files
+
+# download file from bucket
+def download_file(event, context):
     bucket_name = event['bucket']
     file_name = event['name']
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+    files = extract_zip(blob)
+    return files
 
-# Check if the file has a .xlsx extension
-    if file_name.endswith('.xlsx') and 'agegender' in file_name:
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(file_name)
-        # Download and create dataframe
-        blob_content = blob.download_as_bytes()
-        df = pd.read_excel(io.BytesIO(blob_content))
-        return df, file_name
-    else:
-        return None, None
+# function for clean data
+def clean_data(df):
+    df.columns = [col.replace(' ', '_').replace('\t', '').replace('(', '').replace(')', '').lower() for col in df.columns]
+    df = df.astype({col: str for col in df.columns if 'id' in col})
+    df.drop(df.columns[-2:], axis=1, inplace=True)
+    return df
 
+# get fb reach data, convert it as dataframe and concat data
+def get_reach(files, file_filter_text):
+    dfs = [pd.read_excel(f"/tmp/{file}")
+        for file in files if file_filter_text.lower() in file.lower() and file.endswith('.xlsx')
+        ]
+    if not dfs:
+        return None
+    reach_df = pd.concat(dfs, ignore_index=True)
+    return reach_df
 
-def clean_df(df, file_name):
+# get fb data, convert it as dataframe, clean data and concat data
+def get_fb(files):
+    SHEET_ID = ''
+    SHEET_NAME = ''
+    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
+    fb_adver = pd.read_csv(url)
+
+    dfs = [clean_df(pd.read_excel(f"/tmp/{file}"), file, fb_adver)
+        for file in files if "agegender" in file.lower() and file.endswith(".xlsx")]
+
+    df = pd.concat(dfs, ignore_index=True)
+    return df
+
+# function clean fb data
+def clean_df(df, file_name, fb_adver):
     agencies = {
         'name1': {'business_id': '', 'agency_id': '', 'agency': ''},
         'name2': {'business_id': '', 'agency_id': '', 'agency': ''},
         'name3': {'business_id': '', 'agency_id': '', 'agency': ''},
     }
 
-    ## import advertiser from google sheet
-    SHEET_ID = ''
-    SHEET_NAME = ''
-    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
-    fb_adver = pd.read_csv(url)
-
     for agency_name, agency_data in agencies.items():
-        if agency_name in file_name and df is not None:
+        if agency_name in file_name:
             business_id = agency_data['business_id']
             agency_id = agency_data['agency_id']
             agency = agency_data['agency']
@@ -63,7 +87,7 @@ def clean_df(df, file_name):
                 df.rename(columns={'landing page view': 'Landing page views'}, inplace=True)
 
             df.rename(columns={col: col.strip().replace(' ', '_').replace('/t', '').replace('(', '').replace(')', '').lower()
-                    for col in df.columns}, inplace=True)
+                        for col in df.columns}, inplace=True)
 
             new_cols = ['omni_adds_to_cart','omni_content_views','omni_app_purchases',
                         'omni_adds_to_cart_conversion_value','omni_purchases_conversion_value']
@@ -87,30 +111,7 @@ def clean_df(df, file_name):
 
             return df
 
-
-def get_reach(event, file_filter_text):
-    bucket_name = event['bucket']
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blobs = bucket.list_blobs()
-    dfs = [pd.read_excel(io.BytesIO(blob.download_as_bytes()))
-        for blob in blobs if file_filter_text.lower() in blob.name.lower() and blob.name.endswith('.xlsx')
-        and blob.updated.replace(tzinfo=None) + dt.timedelta(hours=7) >= datetime.now() - timedelta(minutes=3)
-    ]
-    if not dfs:
-        return None
-    
-    reach_df = pd.concat(dfs, ignore_index=True)
-    return reach_df
-
-
-def clean_data(df):
-    df.columns = [col.replace(' ', '_').replace('\t', '').replace('(', '').replace(')', '').lower() for col in df.columns]
-    df = df.astype({col: str for col in df.columns if 'id' in col})
-    df.drop(df.columns[-2:], axis=1, inplace=True)
-    return df
-
-
+# join fb data and fb reach data
 def join_data(df, rch_month, rch_camp):
     if rch_month is not None and rch_camp is not None:
         rch_month = clean_data(rch_month)
@@ -125,7 +126,7 @@ def join_data(df, rch_month, rch_camp):
         rch_camp = rch_camp.loc[:,['account_id','account_name','campaign_id','reach','frequency']]
         rch_camp = rch_camp.rename(columns={'reach':'reach_cmp','frequency':'freq_cmp'})
 
-    # join df with rch_month & rch_camp
+  # join df with rch_month & rch_camp
     if df is not None:
         final_df = df.merge(rch_month, on=['account_id','account_name','campaign_id','year','month'], how='left')
         final_df = final_df.merge(rch_camp, on=['account_id','account_name','campaign_id'], how='left')
@@ -144,23 +145,23 @@ def join_data(df, rch_month, rch_camp):
                     'omni_app_purchases', 'omni_adds_to_cart_conversion_value', 'omni_purchases_conversion_value', 'reach_cmp_monthly',
                     'freq_cmp_monthly', 'reach_cmp', 'freq_cmp']
 
-        final_df[metr_cols] = final_df[metr_cols].astype('float64')
+    final_df[metr_cols] = final_df[metr_cols].astype('float64')
 
-        final_df = final_df.drop_duplicates()
+    final_df = final_df.drop_duplicates()
 
-        return final_df
+    return final_df
 
-
+# export data
 def export_data(final_df):
     if final_df is not None:
         pandas_gbq.to_gbq(final_df, 'project.dataset.table', project_id='project_id', if_exists='append')
-        print("export completed")
+        print("export facebook reach complete")
 
-
-def elt_camp_adset(event, context):
-    data, file_name = get_data(event, context)
-    cleaned_fb = clean_df(data, file_name=event['name'])
-    rch_month  = get_reach(event, 'reach_monthly')
-    rch_camp = get_reach(event, 'reach_camp')
-    joined = join_data(cleaned_fb, rch_month, rch_camp)
+# trigger all above function
+def etl_data(event, context):
+    files = download_file(event, context)
+    data = get_fb(files)
+    rch_month  = get_reach(files, 'reach_monthly')
+    rch_camp = get_reach(files, 'reach_camp')
+    joined = join_data(data, rch_month, rch_camp)
     export_data(joined)

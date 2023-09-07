@@ -1,42 +1,36 @@
 import pandas as pd
 import numpy as np
 from google.cloud import storage
-import pandas_gbq
 import os
 import io
-import datetime as dt
-from datetime import datetime, timedelta
+import zipfile
+import pandas_gbq
 
+# function extract zip file
+def extract_zip(blob):
+    with zipfile.ZipFile(io.BytesIO(blob.download_as_string())) as zip_ref:
+        tmp_path = "/tmp/"
+        zip_ref.extractall(tmp_path)
+        extracted_files = zip_ref.namelist()
+    return extracted_files
 
-## get facebook data and read it as excel file
-def get_data(event, context):
+# download file from bucket
+def download_file(event, context):
     bucket_name = event['bucket']
     file_name = event['name']
-    # Check if the file has a .xlsx extension
-    if file_name.endswith('.xlsx') and "reach" not in file_name:
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(file_name)
-        # Download and create dataframe
-        blob_content = blob.download_as_bytes()
-        df = pd.read_excel(io.BytesIO(blob_content))
-        return df, file_name
-    else:
-        return None, None
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+    files = extract_zip(blob)
+    return files
 
-
-def clean_data(df, file_name):
+# function clean fb data
+def clean_data(df, file_name, fb_adver):
     agencies = {
         'name1': {'business_id': '', 'agency_id': '', 'agency': ''},
         'name2': {'business_id': '', 'agency_id': '', 'agency': ''},
         'name3': {'business_id': '', 'agency_id': '', 'agency': ''},
     }
-
-    ## import advertiser from google sheet
-    SHEET_ID = ''
-    SHEET_NAME = ''
-    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
-    fb_adver = pd.read_csv(url)
 
     for agency_name, agency_data in agencies.items():
         if agency_name in file_name and df is not None:
@@ -63,7 +57,7 @@ def clean_data(df, file_name):
                 df.rename(columns={'landing page view': 'Landing page views'}, inplace=True)
 
             df.rename(columns={col: col.strip().replace(' ', '_').replace('/t', '').replace('(', '').replace(')', '').lower()
-                    for col in df.columns}, inplace=True)
+                                for col in df.columns}, inplace=True)
 
             if 'age' in df.columns:
                 df = df.reindex(columns=[
@@ -102,26 +96,33 @@ def clean_data(df, file_name):
             df.loc[:, 'impressions':] = df.loc[:, 'impressions':].astype('float64')
             return df
 
+# get fb data, convert it as dataframe, clean data
+def get_fb(files):
 
-def get_ao(event, context):
-    bucket_name = event['bucket']
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blobs = bucket.list_blobs()
+    SHEET_ID = ''
+    SHEET_NAME = ''
+    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
+    fb_adver = pd.read_csv(url)
 
-    df_list = [
-        pd.read_csv(io.BytesIO(blob.download_as_bytes()))
-        for blob in blobs
-        if blob.name.endswith('.csv') and blob.updated.replace(tzinfo=None) + dt.timedelta(hours=7) >= datetime.now() - timedelta(minutes=3)
-    ]
-    return df_list
+    dfs = [clean_data(pd.read_excel(f"/tmp/{file}"), file, fb_adver)
+            for file in files if "reach" not in file.lower() and file.endswith(".xlsx")]
 
+    return dfs
 
-def clean_ao(df_list):
+# get fb add-on data as dataframe and clean data
+def get_ao(files):
+    dfs = [pd.read_csv(f"/tmp/{file}")
+            for file in files if file.endswith(".csv")]
+    ag_df, dpp_df = clean_ao(dfs)
+
+    return ag_df, dpp_df
+
+# function for clean fb add-on data
+def clean_ao(dfs):
     ag_df = pd.DataFrame()
     dpp_df = pd.DataFrame()
 
-    for df in df_list:
+    for df in dfs:
         ## rename to lower and replace white spaces with underscore
         df.columns = map(str.lower, df.columns)
         df.columns = df.columns.str.replace(' ', '_')
@@ -148,14 +149,16 @@ def clean_ao(df_list):
             dpp_df = dpp_df.groupby(['account_id','campaign_id','ad_id','year','platform', 'placement', 'device_platform']).sum().reset_index()
     
     return ag_df, dpp_df
-    
 
-def join_data(df, ag_df, dpp_df):
-    if df is not None:
+# loop dataframe to split into 2 breakdown then append df to list
+def join_data(dfs, ag_df, dpp_df):
+    final_result = []
+
+    for df in dfs:
         if 'age' in df.columns:
             final_df = df.merge(ag_df, how='left',
-                            on=['account_id', 'account_name', 'campaign_id', 'campaign_name', 'objective', 'year', 'month',
-                                'gender', 'age', 'ad_set_id', 'ad_set_name', 'ad_id', 'ad_name'])
+                                on=['account_id', 'account_name', 'campaign_id', 'campaign_name', 'objective', 
+                                    'year', 'month', 'gender', 'age', 'ad_set_id', 'ad_set_name', 'ad_id', 'ad_name'])
             
             final_df.rename(columns={'impressions_x': 'impressions', 'impressions_y': 'impressions_addon', 'leads_x': 'leads', 
                                     'leads_y': 'leads_add-on', '3-second_video_plays':'sec3_video_plays', 'video_thruplay':'thruplay_actions'}, inplace=True)
@@ -166,6 +169,7 @@ def join_data(df, ag_df, dpp_df):
                                                 'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
                                                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement', 
                                                 'impressions_addon', 'event_responses', 'outbound_clicks', 'leads_add-on', 'thruplay_actions'])
+            final_result.append(final_df)
       
         elif 'device_platform' in df.columns:
             final_df = df.merge(dpp_df, how='left',
@@ -181,6 +185,7 @@ def join_data(df, ag_df, dpp_df):
                                                 'website_adds_to_cart', 'mobile_app_content_views', 'website_content_views', 'mobile_app_purchases', 'website_purchases', 'mobile_app_adds_to_cart_conversion_value', 
                                                 'website_adds_to_cart_conversion_value', 'mobile_app_purchases_conversion_value', 'website_purchases_conversion_value', 'leads', 'clicks_all', 'post_engagement', 
                                                 'impressions_addon', 'event_responses', 'outbound_clicks', 'leads_add-on', 'thruplay_actions'])
+            final_result.append(final_df)
     
         ## add blank value to columns that originally have in bigquery table (old data)
         final_df['impressions_addon'] = final_df['impressions'].astype('float64')
@@ -190,23 +195,23 @@ def join_data(df, ag_df, dpp_df):
                     'omni_adds_to_cart_conversion_value','omni_purchases_conversion_value']
         final_df.loc[:,new_cols] = np.nan
         final_df.loc[:,new_cols] = final_df.loc[:,new_cols].astype('float64')
-        return final_df
 
+    return final_result
 
-def export_data(final_df):
-    if final_df is not None:
-        if 'age' in final_df.columns:
-            pandas_gbq.to_gbq(final_df, 'project.dataset.table_age-gender', project_id='project_id', if_exists='append')
+# export data
+def export_data(final_result):
+    for df in final_result:
+        if 'age' in df.columns:
+            pandas_gbq.to_gbq(df, 'project.dataset.table', project_id='project_id', if_exists='append')
             print("export age-gender complete")
-        elif 'device_platform' in final_df.columns:
-            pandas_gbq.to_gbq(final_df, 'project.dataset.table_dpp', project_id='project_id', if_exists='append')
+        elif 'device_platform' in df.columns:
+            pandas_gbq.to_gbq(df, 'project.dataset.table', project_id='project_id', if_exists='append')
             print("export dpp complete")
 
-
+# trigger all function above
 def etl_data(event, context):
-    data, file_name = get_data(event, context)
-    cleaned_data = clean_data(data, file_name=event['name'])
-    data_ao = get_ao(event, context)
-    cleaned_ag, cleaned_dpp = clean_ao(data_ao)
-    final_data = join_data(cleaned_data, cleaned_ag, cleaned_dpp)
+    files = download_file(event, context)
+    data_fb = get_fb(files)
+    data_ag, data_dpp = get_ao(files)
+    final_data = join_data(data_fb, data_ag, data_dpp)
     export_data(final_data)
