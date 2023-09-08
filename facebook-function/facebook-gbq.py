@@ -6,10 +6,11 @@ import io
 import zipfile
 import pandas_gbq
 
+tmp_path = "/tmp/"
+
 # function extract zip file
 def extract_zip(blob):
     with zipfile.ZipFile(io.BytesIO(blob.download_as_string())) as zip_ref:
-        tmp_path = "/tmp/"
         zip_ref.extractall(tmp_path)
         extracted_files = zip_ref.namelist()
     return extracted_files
@@ -104,15 +105,21 @@ def get_fb(files):
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     fb_adver = pd.read_csv(url)
 
-    dfs = [clean_data(pd.read_excel(f"/tmp/{file}"), file, fb_adver)
-            for file in files if "reach" not in file.lower() and file.endswith(".xlsx")]
+    # dfs = [clean_data(pd.read_excel(f"/tmp/{file}"), file, fb_adver)
+    #         for file in files if "reach" not in file.lower() and file.endswith(".xlsx")]
+    
+    dfs = list(map(lambda file: clean_data(pd.read_excel(f"{tmp_path}/{file}"), file, fb_adver),
+            filter(lambda file: "reach" not in file.lower() and file.endswith(".xlsx"), files)))
 
     return dfs
 
 # get fb add-on data as dataframe and clean data
 def get_ao(files):
-    dfs = [pd.read_csv(f"/tmp/{file}")
-            for file in files if file.endswith(".csv")]
+    # dfs = [pd.read_csv(f"/tmp/{file}")
+    #         for file in files if file.endswith(".csv")]
+    
+    dfs = list(map(lambda file: pd.read_csv(f"{tmp_path}/{file}"),
+            filter(lambda file: file.endswith(".csv"), files)))
     ag_df, dpp_df = clean_ao(dfs)
 
     return ag_df, dpp_df
