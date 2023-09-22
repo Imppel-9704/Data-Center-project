@@ -1,10 +1,20 @@
-# Data Center project
+# Data platform project
 
-Sample code of work on data center project.
-This project I have cleaned data from each social media platforms. Then store the data in Google BigQuery for visualization.
+This repo is the sample code of this project.
 
-From the start, our team needs dashboard which can analyze about cost spend that we have spent on ads for each social media platform. But we don't have any stored historical data. Therefore, We started the project.
-I have cleaned data, joined data with the data in Google Spreadsheet, uploaded data to Google Cloud Storage by using Google Cloud Function and wrote custom query for visualization dashboard.
+From the start my team needs to know the performance of ad campaigns that they have created but they were struggle with export data from each platforms. They also want the overview of all platforms. Therefore, We have started this project.
 
-# Data Pipeline workflow
-<a href="https://drive.google.com/uc?export=view&id=19hzbEj7f66dBBqjeX1TK_pLGnSYsLcn0"><img src="https://drive.google.com/uc?export=view&id=19hzbEj7f66dBBqjeX1TK_pLGnSYsLcn0" align=left style="width: 890px; max-width: 100%; height: auto " title="Click for the larger version." />
+I have created a data pipeline to automate the process of extracting, transforming, and loading data from zip files into Google BigQuery. I also performed data transformations such as joining and cleaning data, queried the data in Google BigQuery to get specific insights, and then connected the data to Google Looker Studio to create data visualizations.
+
+Tools
+**Google Cloud Platform**
+- Google Cloud Storage, Google Cloud Funtions, Google BigQuery
+- Google Looker Studio
+- Google Spreadsheet
+
+Programming Language
+- Python
+- SQL
+
+## Data Pipeline workflow
+![Image](https://drive.google.com/uc?id=1BMrdDpgJBZR_bW0XtcGzisfp1tWOVT_i)
