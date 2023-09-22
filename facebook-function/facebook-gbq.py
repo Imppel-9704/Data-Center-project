@@ -211,7 +211,7 @@ def export_data(final_result):
         if 'age' in df.columns:
             pandas_gbq.to_gbq(df, 'project.dataset.table', project_id='project_id', if_exists='append')
             print("export age-gender complete")
-        elif 'device_platform' in df.columns:
+        elif 'device' in df.columns:
             pandas_gbq.to_gbq(df, 'project.dataset.table', project_id='project_id', if_exists='append')
             print("export dpp complete")
 
