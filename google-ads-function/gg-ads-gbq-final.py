@@ -3,6 +3,7 @@
 import pandas as pd
 from google.cloud import storage
 import numpy as np
+import os
 import io
 import chardet
 import zipfile
@@ -49,9 +50,9 @@ def export_data(dfs):
     elif "ad_type" in df.columns:
       type_df = pd.concat([type_df, df], ignore_index=True)
 
-  pandas_gbq.to_gbq(age_df, 'table_age', project_id='diuhub-amplifith-acquisition', if_exists='append')
+  pandas_gbq.to_gbq(age_df, 'table_age', project_id='', if_exists='append')
   print("export age complete")
-  pandas_gbq.to_gbq(type_df, 'table_type', project_id='diuhub-amplifith-acquisition', if_exists='append')
+  pandas_gbq.to_gbq(type_df, 'table_type', project_id='', if_exists='append')
   print("export device complete")
 
 def clean_data(df, file_name, df_adver):
