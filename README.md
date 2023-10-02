@@ -6,13 +6,13 @@ From the start my team needs to know the performance of ad campaigns that they h
 
 I have created a data pipeline to automate the process of extracting, transforming, and loading data from zip files into Google BigQuery. I also performed data transformations such as joining and cleaning data, queried the data in Google BigQuery to get specific insights, and then connected the data to Google Looker Studio to create data visualizations.
 
-Tools
-**Google Cloud Platform**
+**Tools** \
+Google Cloud Platform
 - Google Cloud Storage, Google Cloud Funtions, Google BigQuery
 - Google Looker Studio
 - Google Spreadsheet
 
-Programming Language
+**Programming Language**
 - Python
 - SQL
 
